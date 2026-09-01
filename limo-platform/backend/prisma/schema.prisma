@@ -1,0 +1,149 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // directUrl is for Prisma migrations bypassing PgBouncer.
+  // In the demo (no PgBouncer) both vars point to the same Postgres port.
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Trip ─────────────────────────────────────────────────────────────────────
+
+model Trip {
+  id                 String       @id @default(uuid())
+  pickupCity         String
+  destinationCity    String
+  requestedAt        DateTime
+  passengerCount     Int
+  luggageSmall       Int          @default(0)
+  luggageMedium      Int          @default(0)
+  luggageLarge       Int          @default(0)
+  luggageBackpack    Int          @default(0)
+  luggageLaptop      Int          @default(0)
+  extraPreferences   String?
+  riderName          String
+  riderPhone         String
+  status             TripStatus   @default(PENDING)
+  cancelledBy        CancelledBy?
+  cancellationReason String?
+  cancelledAt        DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  assignment         TripAssignment?
+  payment            Payment?
+}
+
+enum TripStatus {
+  PENDING
+  ASSIGNED
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+  COMPLETED
+}
+
+enum CancelledBy {
+  RIDER
+  ADMIN
+  SYSTEM
+}
+
+// ─── TripAssignment ───────────────────────────────────────────────────────────
+
+model TripAssignment {
+  id                         String        @id @default(uuid())
+  trip                       Trip          @relation(fields: [tripId], references: [id])
+  tripId                     String        @unique
+  car                        Car           @relation(fields: [carId], references: [id])
+  carId                      String
+  driver                     Driver        @relation(fields: [driverId], references: [id])
+  driverId                   String
+  price                      Decimal       @db.Decimal(10, 2)
+  currency                   String        @default("EGP")
+  exactPickupTime            DateTime
+  paymentMethod              PaymentMethod
+  confirmationToken          String        @unique @default(uuid())
+  confirmationTokenExpiresAt DateTime
+  assignedBy                 Admin         @relation(fields: [assignedById], references: [id])
+  assignedById               String
+  assignedAt                 DateTime      @default(now())
+}
+
+enum PaymentMethod {
+  ONLINE
+  OFFLINE
+}
+
+// ─── Car ──────────────────────────────────────────────────────────────────────
+
+model Car {
+  id          String           @id @default(uuid())
+  model       String
+  color       String
+  plateNumber String
+  capacity    Int
+  owned       Boolean          @default(true)
+  assignments TripAssignment[]
+}
+
+// ─── Driver ───────────────────────────────────────────────────────────────────
+
+model Driver {
+  id          String           @id @default(uuid())
+  name        String
+  phone       String
+  isExternal  Boolean          @default(false)
+  assignments TripAssignment[]
+}
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+model Admin {
+  id           String           @id @default(uuid())
+  phone        String           @unique
+  passwordHash String
+  assignments  TripAssignment[]
+}
+
+// ─── Payment ──────────────────────────────────────────────────────────────────
+
+model Payment {
+  id         String        @id @default(uuid())
+  trip       Trip          @relation(fields: [tripId], references: [id])
+  tripId     String        @unique
+  method     PaymentMethod
+  amount     Decimal       @db.Decimal(10, 2)
+  currency   String        @default("EGP")
+  status     PaymentStatus @default(PENDING)
+  gatewayRef String?
+  paidAt     DateTime?
+  refundedAt DateTime?
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+// ─── MockMessage (demo / MOCK_MODE=true only) ─────────────────────────────────
+// Only populated when MOCK_MODE=true. Drop this model when going to production.
+//
+// If reused for a staging environment (real backend, fake WhatsApp for QA),
+// add an isMock Boolean to Trip or key off APP_ENV to prevent trips that
+// exist across environments from mixing mock and real message records.
+
+model MockMessage {
+  id        String   @id @default(uuid())
+  tripId    String
+  to        String
+  direction String   // "to-admin" | "to-rider"
+  template  String
+  body      String
+  sentAt    DateTime @default(now())
+}
